@@ -50,10 +50,18 @@ class Scheduler:
         if dt <= CURRENT_TIME:
             return False, "지난 시간에는 일정 등록이 불가합니다."
         ds = dt.date().isoformat()
+
+        # ✅ 중복 일정 체크
+        for e in self.schedule_db[ds]:
+            if e["dt"].hour == dt.hour and e["title"] == title:
+                return False, f"이미 등록한 일정입니다 : '{dt.strftime('%Y.%m.%d(%a) %H시')}' - '{title}'"
+            
+        # 중복이 아니면 새 일정 추가
         self.schedule_db[ds].append({
             "title": title,
             "dt": dt,
-            "status": "pending"
+            "status": "pending",
+            "auto_fixed": False
         })
         self._persist()
         return True, f"'{ds}' {dt.hour}시 '{title}' 일정이 등록되었습니다."
@@ -91,18 +99,29 @@ def bot_reply(user_text):
         return f"오류 발생: {e}"
 
 with gr.Blocks() as demo:
-    gr.Markdown("## 간단 일정 등록 챗봇")
-    chatbot = gr.Chatbot()
-    txt = gr.Textbox(placeholder="예: 2025.09.04 17시 농구약속\n또는 '일정' 입력", lines=2)
+    gr.Markdown("## 간단 일정 등록 & 조회 챗봇")
+
+    # user / bot 이름 제거 + 채팅 버블 스타일 적용
+    chatbot = gr.Chatbot(
+        show_label=False,        # user / bot 이름 제거
+        bubble_full_width=False, # 버블 형태 (왼쪽=봇, 오른쪽=유저)
+        height=400
+    )
+
+    txt = gr.Textbox(
+        placeholder="예: 2025.09.04 17시 농구약속\n또는 '일정' 입력",
+        lines=2
+    )
 
     def submit(msg, history):
-        history = history + [["user", msg]]
         reply = bot_reply(msg)
-        history = history + [["bot", reply]]
+        # (user, bot) 튜플 형식으로 추가
+        history = history + [(msg, reply)]
         return "", history
 
     txt.submit(submit, [txt, chatbot], [txt, chatbot])
     gr.Button("전송").click(submit, [txt, chatbot], [txt, chatbot])
+
 
 if __name__ == "__main__":
     demo.launch()
