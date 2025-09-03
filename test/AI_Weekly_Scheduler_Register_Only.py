@@ -18,6 +18,8 @@ import gradio as gr
 CURRENT_TIME = datetime(2025, 9, 3, 6, 0, 0)
 # --------------------------
 
+WEEKDAY_KOR = ["월", "화", "수", "목", "금", "토", "일"]
+
 class Scheduler:
     def __init__(self):
         self.schedule_db = defaultdict(list)
@@ -55,6 +57,21 @@ class Scheduler:
         })
         self._persist()
         return True, f"'{ds}' {dt.hour}시 '{title}' 일정이 등록되었습니다."
+    
+    # 일정 확인
+    def view_schedules(self):
+        if not self.schedule_db:
+            return "등록된 일정이 없습니다."
+        
+        output_lines = []
+        for ds in sorted(self.schedule_db.keys()):
+            items = sorted(self.schedule_db[ds], key=lambda x: x["dt"])
+            for item in items:
+                dt = item["dt"]
+                weekday = WEEKDAY_KOR[dt.weekday()]
+                line = f"{dt.strftime('%Y.%m.%d')}({weekday}) - {dt.hour:02d}시 - {item['title']}"
+                output_lines.append(line)
+        return "\n".join(output_lines)
 
 # --------------------------
 # Gradio 챗봇 UI
@@ -63,18 +80,20 @@ scheduler = Scheduler()
 
 def bot_reply(user_text):
     try:
-        if re.match(r"^\d{4}[.\-]\d{1,2}[.\-]\d{1,2}\s+\d{1,2}시\s+.+", user_text):
+        if user_text.strip() == "일정":
+            return scheduler.view_schedules()
+        elif re.match(r"^\d{4}[.\-]\d{1,2}[.\-]\d{1,2}\s+\d{1,2}시\s+.+", user_text):
             dt, title = scheduler.parse_schedule_entry(user_text)
             ok, msg = scheduler.add_schedule(dt, title)
             return msg
-        return "입력 형식: 'YYYY.MM.DD HH시 제목' 예: 2025.09.04 17시 농구약속"
+        return "입력 형식: 'YYYY.MM.DD HH시 제목' (예: 2025.09.04 17시 농구약속)\n또는 '일정'을 입력해 확인하세요."
     except Exception as e:
         return f"오류 발생: {e}"
 
 with gr.Blocks() as demo:
     gr.Markdown("## 간단 일정 등록 챗봇")
     chatbot = gr.Chatbot()
-    txt = gr.Textbox(placeholder="예: 2025.09.04 17시 농구약속", lines=2)
+    txt = gr.Textbox(placeholder="예: 2025.09.04 17시 농구약속\n또는 '일정' 입력", lines=2)
 
     def submit(msg, history):
         history = history + [["user", msg]]
