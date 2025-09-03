@@ -23,7 +23,13 @@ WEEKDAY_KOR = ["월", "화", "수", "목", "금", "토", "일"]
 class Scheduler:
     def __init__(self):
         self.schedule_db = defaultdict(list)
+        self.pending_reset = False  # ✅ 초기화 대기 상태 플래그
         self._load()
+    
+    def reset(self):
+        """일정 전체 초기화"""
+        self.schedule_db.clear()
+        self._persist()
 
     def _persist(self):
         with open("scheduler_state.pkl", "wb") as f:
@@ -87,16 +93,36 @@ class Scheduler:
 scheduler = Scheduler()
 
 def bot_reply(user_text):
-    try:
-        if user_text.strip() == "일정":
-            return scheduler.view_schedules()
-        elif re.match(r"^\d{4}[.\-]\d{1,2}[.\-]\d{1,2}\s+\d{1,2}시\s+.+", user_text):
-            dt, title = scheduler.parse_schedule_entry(user_text)
-            ok, msg = scheduler.add_schedule(dt, title)
-            return msg
-        return "입력 형식: 'YYYY.MM.DD HH시 제목' (예: 2025.09.04 17시 농구약속)\n또는 '일정'을 입력해 확인하세요."
-    except Exception as e:
-        return f"오류 발생: {e}"
+    user_text = user_text.strip()
+
+    # ✅ 초기화 대기 상태일 때 (Y/N 응답 처리)
+    if scheduler.pending_reset:
+        if user_text.lower() == "y":
+            scheduler.reset()
+            scheduler.pending_reset = False
+            return "✅ 모든 일정이 초기화되었습니다."
+        elif user_text.lower() == "n":
+            scheduler.pending_reset = False
+            return "❎ 초기화를 취소했습니다."
+        else:
+            return "⚠️ 잘못된 입력입니다. 초기화를 진행하려면 Y 또는 N을 입력하세요."
+
+    # ✅ 초기화 명령어 처리
+    if user_text == "초기화":
+        scheduler.pending_reset = True
+        return "정말 초기화하시겠습니까? (Y/N)"
+
+    # ✅ 일정 조회
+    if user_text == "일정":
+        return scheduler.view_schedules()
+
+    # ✅ 일정 등록
+    elif re.match(r"^\d{4}[.\-]\d{1,2}[.\-]\d{1,2}\s+\d{1,2}시\s+.+", user_text):
+        dt, title = scheduler.parse_schedule_entry(user_text)
+        ok, msg = scheduler.add_schedule(dt, title)
+        return msg
+
+    return "입력 형식: 'YYYY.MM.DD HH시 제목' (예: 2025.09.04 17시 농구약속)\n또는 '일정'을 입력해 확인하세요.\n'초기화'로 전체 삭제할 수 있습니다."
 
 with gr.Blocks() as demo:
     gr.Markdown("## 간단 일정 등록 & 조회 챗봇")
